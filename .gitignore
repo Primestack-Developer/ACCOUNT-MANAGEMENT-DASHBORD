@@ -6,4 +6,3 @@ data/backup/
 *.db
 *.db-journal
 .env
-frontend/src/logoBase64.ts
