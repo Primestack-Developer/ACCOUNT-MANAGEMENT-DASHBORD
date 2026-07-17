@@ -284,6 +284,19 @@ app.get('/assets/logo', (_req, res) => {
   res.sendFile(LOGO_PATH);
 });
 
+// PWA files
+app.get('/manifest.json', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'manifest.json'));
+});
+app.get('/sw.js', (_req, res) => {
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.setHeader('Content-Type', 'application/javascript');
+  res.sendFile(path.join(PUBLIC_DIR, 'sw.js'));
+});
+app.get('/logo.jpg', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'logo.jpg'));
+});
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
