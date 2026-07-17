@@ -1,0 +1,9 @@
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+data/cobbler.db
+data/backup/
+*.db
+*.db-journal
+.env
+frontend/src/logoBase64.ts
