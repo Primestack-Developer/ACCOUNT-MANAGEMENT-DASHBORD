@@ -3,7 +3,7 @@ services:
     name: cobbler-shoe-laundry
     runtime: node
     plan: starter
-    buildCommand: npm ci && node make-logo.js && cd frontend && npm ci && npm run build && cd ..
+    buildCommand: npm install && node make-logo.js && cd frontend && npm install && npm run build && cd ..
     startCommand: node server.js
     healthCheckPath: /health
     disk:
