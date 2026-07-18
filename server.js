@@ -1,68 +1,82 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
-const cors = require('cors');
-const sqlite3 = require('sqlite3').verbose();
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const path    = require('path');
+const fs      = require('fs');
+const cors    = require('cors');
+const bcrypt  = require('bcryptjs');
+const jwt     = require('jsonwebtoken');
 
-const app = express();
-const PORT = Number(process.env.PORT) || 5000;
+const app        = express();
+const PORT       = Number(process.env.PORT) || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'cobbler-shoe-laundry-secret-key-2024';
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'cobbler.db');
+const DB_PATH    = process.env.DB_PATH || path.join(__dirname, 'data', 'cobbler.db');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(path.dirname(DB_PATH), 'backup');
-const LOGO_PATH = path.join(__dirname, 'Cobbler Logo_page-0001.jpg');
+const LOGO_PATH  = path.join(__dirname, 'Cobbler Logo_page-0001.jpg');
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-fs.mkdirSync(BACKUP_DIR, { recursive: true });
+fs.mkdirSync(BACKUP_DIR,            { recursive: true });
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(PUBLIC_DIR));
 
-const db = new sqlite3.Database(DB_PATH, (err) => {
-  if (err) {
-    console.error('Database connection error:', err.message);
-    process.exit(1);
-  }
-});
+// ── Pure-JS SQLite via sql.js (no native binaries) ───────────────────────────
+const initSqlJs = require('sql.js');
 
+let db;   // sql.js Database instance
+
+// Persist DB to disk on every write
+function saveToDisk() {
+  const data = db.export();
+  fs.writeFileSync(DB_PATH, Buffer.from(data));
+}
+
+// Load DB from disk (or create new)
+async function openDatabase() {
+  const SQL = await initSqlJs();
+  if (fs.existsSync(DB_PATH)) {
+    const fileBuffer = fs.readFileSync(DB_PATH);
+    db = new SQL.Database(fileBuffer);
+  } else {
+    db = new SQL.Database();
+  }
+}
+
+// Helpers that match the old promise-based API exactly
 function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function onRun(err) {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve({ lastID: this.lastID, changes: this.changes });
-    });
-  });
+  try {
+    db.run(sql, params);
+    const lastID  = db.exec('SELECT last_insert_rowid() as id')[0]?.values[0][0] || 0;
+    saveToDisk();
+    return Promise.resolve({ lastID, changes: 1 });
+  } catch (err) {
+    return Promise.reject(err);
+  }
 }
 
 function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(row);
-    });
-  });
+  try {
+    const stmt    = db.prepare(sql);
+    const result  = stmt.getAsObject(params);
+    stmt.free();
+    return Promise.resolve(Object.keys(result).length ? result : undefined);
+  } catch (err) {
+    return Promise.reject(err);
+  }
 }
 
 function all(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(rows);
-    });
-  });
+  try {
+    const rows   = [];
+    const stmt   = db.prepare(sql);
+    stmt.bind(params);
+    while (stmt.step()) rows.push(stmt.getAsObject());
+    stmt.free();
+    return Promise.resolve(rows);
+  } catch (err) {
+    return Promise.reject(err);
+  }
 }
 
 function isFilled(value) {
@@ -882,8 +896,9 @@ app.get('/{*splat}', (_req, res) => {
 
 (async () => {
   try {
+    await openDatabase();
+    console.log('Database opened:', DB_PATH);
     await initializeDatabase();
-    console.log('Connected to SQLite database at:', DB_PATH);
     console.log('Database initialized successfully.');
     app.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
